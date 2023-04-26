@@ -1,0 +1,3 @@
+-target writer
+-stats 10
+-treebanks
