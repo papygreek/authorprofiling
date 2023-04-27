@@ -18,8 +18,12 @@ from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.cluster import KMeans
 
 from gensim.models.fasttext import load_facebook_vectors
+import unicodedata as ud
+
+from . import fw
 
 pd.set_option('display.max_rows', None)
+grave_to_acute = lambda x: ud.normalize('NFC', ud.normalize('NFD', x).translate({ord('\N{COMBINING GRAVE ACCENT}'):ord('\N{COMBINING ACUTE ACCENT}')}))
 
 script_location = Path(__file__).absolute().parent
 
@@ -52,30 +56,90 @@ class EmbeddingTransformer(BaseEstimator, TransformerMixin):
 
 
 def transformers(init_model=None):
+    model = None
     if init_model == 'fasttext':
         model = load_facebook_vectors(script_location / 'fasttext-ancientgreek.bin')
 
     return [
+        # Word forms
+        (
+            'words_bow',
+            CountVectorizer(),
+            'text',
+        ),
+        (
+            'function_words_bow',
+            CountVectorizer(),
+            'function_words',
+        ),
+        (
+            'words_tfidf',
+            TfidfVectorizer(),
+            'text',
+        ),
+        (
+            'function_words_tfidf',
+            TfidfVectorizer(),
+            'function_words',
+        ),
+
+        # Lemmas
+        (
+            'lemmas_bow',
+            CountVectorizer(),
+            'lemmas',
+        ),
+        (
+            'function_word_lemmas_bow',
+            CountVectorizer(),
+            'function_word_lemmas',
+        ),
+        (
+            'lemmas_tfidf',
+            TfidfVectorizer(),
+            'lemmas',
+        ),
+        (
+            'function_word_lemmas_tfidf',
+            TfidfVectorizer(),
+            'function_word_lemmas',
+        ),
+
+        # Postags
+        (
+            'postags_bow',
+            CountVectorizer(),
+            'postags',
+        ),
+        (
+            'function_word_postags_bow',
+            CountVectorizer(),
+            'function_word_postags',
+        ),
+        (
+            'postags_tfidf',
+            TfidfVectorizer(),
+            'postags',
+        ),
+        (
+            'function_word_postags_tfidf',
+            TfidfVectorizer(),
+            'function_word_postags',
+        ),
+
+        # Variations
+        (
+            'variations_bow',
+            CountVectorizer(),
+            'variations',
+        ),
         (
             'variations_tfidf',
             TfidfVectorizer(),
             'variations',
         ),
-        (
-            'variations_count',
-            CountVectorizer(),
-            'variations',
-        ),
-        (
-            'words_tfidf',
-            TfidfVectorizer(),
-            'text'
-        ),
-        (
-            'words_count',
-            CountVectorizer(),
-            'text'
-        ),
+
+        # Fasttext
         (
             'words_fasttext',
             EmbeddingTransformer(model),
@@ -99,7 +163,8 @@ def transformers(init_model=None):
     ]
 
 def normalize(x):
-    return " ".join(x.split())
+    
+    return grave_to_acute(" ".join(x.split()))
 
 def get_token_n(x):
     return len(x.split())
@@ -113,11 +178,28 @@ def to_tokens(text, onlygreek=False):
 
 def function_words(d):
     text = to_tokens(d['text'], onlygreek=True)
-    postags = to_tokens(d['postags'])
+    lemmas = to_tokens(d['lemmas'], onlygreek=True)
     res = []
-    for i, p in enumerate(postags):
-        if p[0] in ['p', 'c', 'd', 'r']:
+    for i, p in enumerate(lemmas):
+        if p in fw.function_word_lemmas:
             res.append(text[i])
+    return ' '.join(res)
+
+def function_word_lemmas(d):
+    lemmas = to_tokens(d['lemmas'], onlygreek=True)
+    res = []
+    for i, p in enumerate(lemmas):
+        if p in fw.function_word_lemmas:
+            res.append(lemmas[i])
+    return ' '.join(res)
+
+def function_word_postags(d):
+    postags = to_tokens(d['postags'])
+    lemmas = to_tokens(d['lemmas'], onlygreek=True)
+    res = []
+    for i, p in enumerate(lemmas):
+        if p in fw.function_word_lemmas:
+            res.append(postags[i])
     return ' '.join(res)
 
 def get_stats(target, df, tail):
@@ -180,6 +262,8 @@ def run(args):
     df['variations_len'] = df['variations'].map(get_token_n)
     df['text_len'] = df['text'].map(get_token_n)
     df['function_words'] = df.apply(function_words, axis=1)
+    df['function_word_lemmas'] = df.apply(function_word_lemmas, axis=1)
+    df['function_word_postags'] = df.apply(function_word_postags, axis=1)
 
     print(f'Total documents: {df.shape[0]}')
 
