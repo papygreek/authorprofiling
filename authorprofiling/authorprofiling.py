@@ -50,8 +50,7 @@ class EmbeddingTransformer(BaseEstimator, TransformerMixin):
             vectorizer.fit_transform(X)
             weights = dict(zip(vectorizer.get_feature_names_out(), vectorizer.idf_))
 
-        embeddings = [self.embed(d, weights) for d in X]
-
+        embeddings = np.array([self.embed(d, weights) for d in X])
         return pd.DataFrame(embeddings)
 
 
@@ -307,6 +306,10 @@ def run(args):
 
     ct = get_column_transformer(args.features)
     X = ct.fit_transform(df)
+    meanPoint = X.mean(axis = 0)
+
+    # subtract mean point
+    X -= meanPoint
 
     # Get clusters
     kmeans = KMeans(n_clusters=args.clusters, max_iter=100, n_init=5,random_state=0).fit(X)
