@@ -1,7 +1,6 @@
 -target author 
 -persons 155 337 380 99 99? 
--features function_words_fasttext_tfidf
+-features function_words_tfidf
 -min_tokens 100 
--algorithm LSA
 -treebanks
 -clusters 4

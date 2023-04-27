@@ -311,13 +311,17 @@ def run(args):
     # subtract mean point
     X -= meanPoint
 
+    X = np.asarray(X)
+
     # Get clusters
     kmeans = KMeans(n_clusters=args.clusters, max_iter=100, n_init=5,random_state=0).fit(X)
 
+    svd = TruncatedSVD(n_components=2, random_state=42)
+    data = svd.fit_transform(X)
+    '''
     # Dimensionality reduction
     if args.algorithm == 'LSA':
-        svd = TruncatedSVD(n_components=2, random_state=42)
-        data = svd.fit_transform(X)
+        a = 1
 
     elif args.algorithm == 'PCA':
         pca = PCA(random_state=42, n_components=2)
@@ -326,6 +330,8 @@ def run(args):
     elif args.algorithm == 'TSNE':
         tsne = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=10)
         data = tsne.fit_transform(X) # TSNE
+    
+    '''
     
     # Dimensionality reduction results back to dataframe
     df2 = pd.DataFrame(data, columns = ['x', 'y'])
