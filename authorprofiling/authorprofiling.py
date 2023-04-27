@@ -321,7 +321,8 @@ def run(args):
         data = pca.fit_transform(X)
 
     elif args.algorithm == 'TSNE':
-        data = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=3).fit_transform(np.array(X)) # TSNE
+        tsne = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=10)
+        data = tsne.fit_transform(X) # TSNE
     
     # Dimensionality reduction results back to dataframe
     df2 = pd.DataFrame(data, columns = ['x', 'y'])

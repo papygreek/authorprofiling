@@ -2,6 +2,6 @@
 -persons 155 337 380 99 99? 
 -features function_words_fasttext_tfidf
 -min_tokens 100 
--algorithm PCA 
+-algorithm PCA
 -treebanks
 -clusters 4
