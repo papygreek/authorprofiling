@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser(
     epilog='Thank you'
 )
 
-parser.add_argument('-target', choices=['writer', 'author'], help='The target: writer or author', default='author')
+parser.add_argument('-target', choices=['writer', 'author'], default='author')
 parser.add_argument('-stats', nargs='?', const=10, type=int, default=0)
 parser.add_argument('-persons', nargs='*', type=str, default=False)
 parser.add_argument('-text_name_contains', type=str, default=None)
@@ -25,6 +25,6 @@ parser.add_argument('-model', choices=['word2vec', 'fasttext'], default='fasttex
 parser.add_argument('-plot', choices=['2d', '3d'], default='2d')
 parser.add_argument('-treebanks', action='store_true')
 parser.add_argument('-clusters', type=int, default=0)
-parser.add_argument('-classify', action='store_true')
+parser.add_argument('-mode', choices=['clustering', 'classification'], default="clustering")
 parser.add_argument('--file', '--f', type=open, action=LoadFromFile, default=argparse.SUPPRESS)
 authorprofiling.run(*parser.parse_known_args())

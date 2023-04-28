@@ -7,4 +7,4 @@
 -features character_bigrams character_trigrams
 -min_tokens 50
 -plot 2d
--classify
+-mode clustering

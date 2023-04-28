@@ -69,13 +69,23 @@ def transformers(init_model=None):
     return [
         # Character bigrams
         (
-            'character_bigrams',
+            'character_bigrams_bow',
+            CountVectorizer(analyzer='char', ngram_range=(2,2)),
+            'text',
+        ),
+        (
+            'character_bigrams_tfidf',
             TfidfVectorizer(analyzer='char', ngram_range=(2,2)),
             'text',
         ),
         # Character trigrams
         (
-            'character_trigrams',
+            'character_trigrams_bow',
+            CountVectorizer(analyzer='char', ngram_range=(3,3)),
+            'text',
+        ),
+        (
+            'character_trigrams_tfidf',
             TfidfVectorizer(analyzer='char', ngram_range=(3,3)),
             'text',
         ),
@@ -343,7 +353,7 @@ def run(args, _):
         print(f'Too many persons ({len(unique_persons)}). Maximum is 10.')
         exit()
 
-    if args.classify:
+    if args.mode == 'classification':
 
 
         clf = make_pipeline(ct, svm.SVC(kernel='linear', probability=True))
@@ -372,74 +382,74 @@ def run(args, _):
         )
         disp.plot(cmap=plt.cm.Blues)
         plt.show()
-        exit()
 
-    # Get n clusters
-    n_clusters = len(list(set([x.replace('?', '') for x in unique_persons]))) \
-        if not args.clusters \
-        else args.clusters
-    
-    # Get kmeans clusters
-    kmeans = KMeans(n_clusters=n_clusters, max_iter=500, n_init=10,random_state=0).fit(X)
-
-    # LSA dimensionality reduction
-    svd = TruncatedSVD(n_components=target_dimensions, random_state=42)
-    data = svd.fit_transform(X)
-    
-    # Dimensionality reduction results back to dataframe
-    df2 = pd.DataFrame(data, columns = ['x', 'y']) \
-        if target_dimensions == 2 \
-        else pd.DataFrame(data, columns = ['x', 'y', 'z'])
-    
-    df2['person'] = df['person']
-    df2['text_id'] = df['text_id']
-    df2['cluster'] = kmeans.labels_
-
-    # Get indexes of unique persons [0,1,2,3...]
-    df2['person_unique'] = df2['person'].map(lambda x: unique_persons.index(x))
-
-    # Plotting
-    plt.rcParams['savefig.dpi']=300
-    fig = plt.figure(figsize=(15,10))
-    ax = fig.add_subplot(111, projection=None if target_dimensions == 2 else '3d')
-    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-
-    seen_persons = set()
-    handles = []
-    texts = []
-    for _, row in df2.iterrows():
-        scatter_config = {
-            'label': row['person'],
-            'marker': markers[row['cluster']],
-            'color': colors[row['person_unique']],
-            's': 100 if target_dimensions == 2 else 50
-        }
-        ax_text = [row['x'], row['y'], f" {row['text_id']} "]
-
-        if target_dimensions == 3:
-            scatter_config['zs'] = row['z']
-            scatter_config['xs'] = row['x'],
-            scatter_config['ys'] = row['y'],
-            ax_text.insert(2, row['z'])
-        elif target_dimensions == 2:
-            scatter_config['x'] = row['x'],
-            scatter_config['y'] = row['y'],
+    elif args.mode == 'clustering':
+        # Get n clusters
+        n_clusters = len(list(set([x.replace('?', '') for x in unique_persons]))) \
+            if not args.clusters \
+            else args.clusters
         
-        ax.scatter(**scatter_config)
-        texts.append(ax.text(*ax_text, size='smaller' if target_dimensions == 3 else 'medium'))
+        # Get kmeans clusters
+        kmeans = KMeans(n_clusters=n_clusters, max_iter=500, n_init=10,random_state=0).fit(X)
 
-        if row['person'] not in seen_persons:
-            seen_persons.add(row['person'])
-            handles.append(mpatches.Patch(color=colors[row['person_unique']], label=row['person']))
-    
-    if target_dimensions == 2:
-        adjust_text(texts)
-    else:
-        # Drop lines
-        zs_l = np.asarray([[i, -1] for i in df2.z])
+        # LSA dimensionality reduction
+        svd = TruncatedSVD(n_components=target_dimensions, random_state=42)
+        data = svd.fit_transform(X)
+        
+        # Dimensionality reduction results back to dataframe
+        df2 = pd.DataFrame(data, columns = ['x', 'y']) \
+            if target_dimensions == 2 \
+            else pd.DataFrame(data, columns = ['x', 'y', 'z'])
+        
+        df2['person'] = df['person']
+        df2['text_id'] = df['text_id']
+        df2['cluster'] = kmeans.labels_
 
-        for i, _ in enumerate(zs_l):
-            ax.plot(xs=[df2.x[i]]*2, ys=[df2.y[i]]*2, zs=zs_l[i], color="lightgrey")
+        # Get indexes of unique persons [0,1,2,3...]
+        df2['person_unique'] = df2['person'].map(lambda x: unique_persons.index(x))
 
-    plt.legend(handles=handles)
-    plt.show()
+        # Plotting
+        plt.rcParams['savefig.dpi']=300
+        fig = plt.figure(figsize=(15,10))
+        ax = fig.add_subplot(111, projection=None if target_dimensions == 2 else '3d')
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+        seen_persons = set()
+        handles = []
+        texts = []
+        for _, row in df2.iterrows():
+            scatter_config = {
+                'label': row['person'],
+                'marker': markers[row['cluster']],
+                'color': colors[row['person_unique']],
+                's': 100 if target_dimensions == 2 else 50
+            }
+            ax_text = [row['x'], row['y'], f" {row['text_id']} "]
+
+            if target_dimensions == 3:
+                scatter_config['zs'] = row['z']
+                scatter_config['xs'] = row['x'],
+                scatter_config['ys'] = row['y'],
+                ax_text.insert(2, row['z'])
+            elif target_dimensions == 2:
+                scatter_config['x'] = row['x'],
+                scatter_config['y'] = row['y'],
+            
+            ax.scatter(**scatter_config)
+            texts.append(ax.text(*ax_text, size='smaller' if target_dimensions == 3 else 'medium'))
+
+            if row['person'] not in seen_persons:
+                seen_persons.add(row['person'])
+                handles.append(mpatches.Patch(color=colors[row['person_unique']], label=row['person']))
+        
+        if target_dimensions == 2:
+            adjust_text(texts)
+        else:
+            # Drop lines
+            zs_l = np.asarray([[i, -1] for i in df2.z])
+
+            for i, _ in enumerate(zs_l):
+                ax.plot(xs=[df2.x[i]]*2, ys=[df2.y[i]]*2, zs=zs_l[i], color="lightgrey")
+
+        plt.legend(handles=handles)
+        plt.show()
