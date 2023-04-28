@@ -10,10 +10,17 @@ import matplotlib.patches as mpatches
 from adjustText import adjust_text
 
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.decomposition import TruncatedSVD, PCA
+from sklearn.decomposition import TruncatedSVD
 from sklearn.compose import ColumnTransformer
-from sklearn.manifold import TSNE
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+
+from sklearn import svm
+from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.model_selection import cross_val_score, cross_val_predict, cross_validate, KFold, StratifiedKFold, train_test_split
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
+from sklearn.utils import resample
 
 from sklearn.cluster import KMeans
 
@@ -60,6 +67,18 @@ def transformers(init_model=None):
         model = load_facebook_vectors(script_location / 'fasttext-ancientgreek.bin')
 
     return [
+        # Character bigrams
+        (
+            'character_bigrams',
+            TfidfVectorizer(analyzer='char', ngram_range=(2,2)),
+            'text',
+        ),
+        # Character trigrams
+        (
+            'character_trigrams',
+            TfidfVectorizer(analyzer='char', ngram_range=(3,3)),
+            'text',
+        ),
         # Word forms
         (
             'words_bow',
@@ -162,8 +181,7 @@ def transformers(init_model=None):
     ]
 
 def normalize(x):
-    
-    return grave_to_acute(" ".join(x.split()))
+    return grave_to_acute(" ".join(x.split())).lower()
 
 def get_token_n(x):
     return len(x.split())
@@ -234,11 +252,21 @@ def get_column_transformer(features):
         for tr in transformers(model) if tr[0] in features
     ])
 
-def run(args):
+def run(args, _):
+
+    # Require stats or features
+    if not (args.stats or args.features):
+        print('Available features:')
+        for t in transformers():
+            print(t[0])
+        exit()  
+
     target_files = {
         'writer': 'writer_texts.csv',
         'author': 'author_texts.csv'
     }
+
+    target_dimensions = 2 if args.plot == '2d' else 3
 
     # Read from CSV
     df = pd.read_csv(script_location / target_files[args.target], delimiter='\t')
@@ -247,7 +275,6 @@ def run(args):
     df = df.fillna('')
 
     # Sort
-
     df = df.sort_values(
         by="person",
         key=lambda x: np.argsort(index_natsorted(df["person"]))
@@ -264,105 +291,155 @@ def run(args):
     df['function_word_lemmas'] = df.apply(function_word_lemmas, axis=1)
     df['function_word_postags'] = df.apply(function_word_postags, axis=1)
 
-    print(f'Total documents: {df.shape[0]}')
+    print(f'Documents in complete dataset (without filters): {df.shape[0]}')
 
-    if not args.persons:
-        if args.stats:
-            get_stats(args.target, df, args.stats)
-        else:
-            print('Nothing to do')
-        exit()
-
-    df = df[df['person'].isin([str(x) for x in args.persons])]
-    print(f'Documents with selected {args.target}s: {df.shape[0]}')
-    if not df.shape[0]:
-        exit()
-
-    # Filter by minimum variation count
-    df = df[df['variations'].apply(lambda x: len(x.split()) >= args.min_vars)]
-
-    # Filter by minimum token count
-    df = df[df['text'].apply(lambda x: len(x.split()) >= args.min_tokens)]
-
-    # Filter by treebanks (require annotations)
-    if args.treebanks:
-        df = df[df['annotated'].apply(lambda x: x == 1)]
-
-    print(f'Length of df using filters (min_vars: {args.min_vars}, min_tokens: {args.min_tokens}, treebanks {args.treebanks}: {df.shape[0]}')
-    
-    if not df.shape[0]:
-        exit()
+    for k, v in vars(args).items():
+        if v:
+            if k == 'persons':
+                df = df[df['person'].isin([str(x) for x in args.persons])]
+            elif k == 'text_name_contains':
+                df = df[df['text_id'].str.contains(args.text_name_contains)]
+            elif k == 'text_name_not_contains':
+                df = df[~df['text_id'].str.contains(args.text_name_not_contains)]
+            elif k == 'min_vars':
+                df = df[df['variations'].apply(lambda x: len(x.split()) >= args.min_vars)]
+            elif k == 'min_tokens':
+                df = df[df['text'].apply(lambda x: len(x.split()) >= args.min_tokens)]
+            elif k == 'treebanks':
+                df = df[df['annotated'].apply(lambda x: x == 1)]
+            
+        if df.empty:
+            print('No documents with these filters.')
+            exit()
 
     # Reset index
     df = df.reset_index(drop=True)
 
     # Print stats
     get_stats(args.target, df, args.stats)
-
-    if not args.features:
-        print('Please specify features. Implemented features are:')
-        print(f'{",".join([t[0] for t in transformers()])}')
+    print(f'Total filtered documents: {df.shape[0]}')
+    
+    if args.stats:
         exit()
-
+    
+    # Start transforming
     ct = get_column_transformer(args.features)
     X = ct.fit_transform(df)
-    meanPoint = X.mean(axis = 0)
 
-    # subtract mean point
+    # Centering
+    meanPoint = X.mean(axis = 0)
     X -= meanPoint
 
+    # Make sure X is np array
     X = np.asarray(X)
 
-    # Get clusters
-    kmeans = KMeans(n_clusters=args.clusters, max_iter=100, n_init=5,random_state=0).fit(X)
+    # Print n. of features
+    print(f'Features: {X.shape}')
 
-    svd = TruncatedSVD(n_components=2, random_state=42)
-    data = svd.fit_transform(X)
-    '''
-    # Dimensionality reduction
-    if args.algorithm == 'LSA':
-        a = 1
+    # Get unique persons
+    unique_persons = list(df.person.unique())
 
-    elif args.algorithm == 'PCA':
-        pca = PCA(random_state=42, n_components=2)
-        data = pca.fit_transform(X)
+    if len(unique_persons) > 10:
+        print(f'Too many persons ({len(unique_persons)}). Maximum is 10.')
+        exit()
 
-    elif args.algorithm == 'TSNE':
-        tsne = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=10)
-        data = tsne.fit_transform(X) # TSNE
+    if args.classify:
+
+
+        clf = make_pipeline(ct, svm.SVC(kernel='linear', probability=True))
+
+        # Make cross validator
+        cv = StratifiedKFold(n_splits=3, shuffle=True)
+
+        scoring = ('precision_macro', 'recall_macro', 'accuracy', 'f1_macro')
+
+        scores = cross_validate(clf, df, df["person"], cv=cv, scoring=scoring)
+        print('Cross validation results (folds = 3): \n --------------------')
+        print("%0.2f mean accuracy with a standard deviation of %0.2f" % (scores["test_accuracy"].mean(), scores["test_accuracy"].std()))
+        print()
+        # Get predictions
+        pred_y = cross_val_predict(clf, df, df["person"], cv=cv) 
+        print(classification_report(df["person"], pred_y, target_names=unique_persons))
+
+        # Get confusion matrix
+        cm = confusion_matrix(df["person"], pred_y)
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+
+        disp = ConfusionMatrixDisplay(
+            confusion_matrix=cm,
+            display_labels=unique_persons
+        
+        )
+        disp.plot(cmap=plt.cm.Blues)
+        plt.show()
+        exit()
+
+    # Get n clusters
+    n_clusters = len(list(set([x.replace('?', '') for x in unique_persons]))) \
+        if not args.clusters \
+        else args.clusters
     
-    '''
+    # Get kmeans clusters
+    kmeans = KMeans(n_clusters=n_clusters, max_iter=500, n_init=10,random_state=0).fit(X)
+
+    # LSA dimensionality reduction
+    svd = TruncatedSVD(n_components=target_dimensions, random_state=42)
+    data = svd.fit_transform(X)
     
     # Dimensionality reduction results back to dataframe
-    df2 = pd.DataFrame(data, columns = ['x', 'y'])
+    df2 = pd.DataFrame(data, columns = ['x', 'y']) \
+        if target_dimensions == 2 \
+        else pd.DataFrame(data, columns = ['x', 'y', 'z'])
+    
     df2['person'] = df['person']
     df2['text_id'] = df['text_id']
     df2['cluster'] = kmeans.labels_
 
-    unique_persons = list(df.person.unique())
-
-    def person_to_smallint(x):
-        return unique_persons.index(x)
-
-    df2['person_unique'] = df2['person'].map(person_to_smallint)
+    # Get indexes of unique persons [0,1,2,3...]
+    df2['person_unique'] = df2['person'].map(lambda x: unique_persons.index(x))
 
     # Plotting
+    plt.rcParams['savefig.dpi']=300
     fig = plt.figure(figsize=(15,10))
-    ax = fig.add_subplot(111)
+    ax = fig.add_subplot(111, projection=None if target_dimensions == 2 else '3d')
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
     seen_persons = set()
     handles = []
     texts = []
     for _, row in df2.iterrows():
-        ax.scatter(x=row['x'], y=row['y'], label=row['person'], marker=markers[row['cluster']], color=colors[row['person_unique']], s=50)
-        texts.append(ax.text(row['x'], row['y'], ' '+row['text_id'], size='smaller'))
+        scatter_config = {
+            'label': row['person'],
+            'marker': markers[row['cluster']],
+            'color': colors[row['person_unique']],
+            's': 100 if target_dimensions == 2 else 50
+        }
+        ax_text = [row['x'], row['y'], f" {row['text_id']} "]
+
+        if target_dimensions == 3:
+            scatter_config['zs'] = row['z']
+            scatter_config['xs'] = row['x'],
+            scatter_config['ys'] = row['y'],
+            ax_text.insert(2, row['z'])
+        elif target_dimensions == 2:
+            scatter_config['x'] = row['x'],
+            scatter_config['y'] = row['y'],
+        
+        ax.scatter(**scatter_config)
+        texts.append(ax.text(*ax_text, size='smaller' if target_dimensions == 3 else 'medium'))
 
         if row['person'] not in seen_persons:
             seen_persons.add(row['person'])
             handles.append(mpatches.Patch(color=colors[row['person_unique']], label=row['person']))
     
-    adjust_text(texts)
+    if target_dimensions == 2:
+        adjust_text(texts)
+    else:
+        # Drop lines
+        zs_l = np.asarray([[i, -1] for i in df2.z])
+
+        for i, _ in enumerate(zs_l):
+            ax.plot(xs=[df2.x[i]]*2, ys=[df2.y[i]]*2, zs=zs_l[i], color="lightgrey")
 
     plt.legend(handles=handles)
     plt.show()

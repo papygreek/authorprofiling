@@ -1,3 +1,4 @@
 -target author 
--stats 10
--treebanks
+-stats 50
+-min_tokens 5
+-text_name_contains cair.zen

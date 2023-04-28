@@ -1,6 +1,10 @@
 -target author 
--persons 155 337 380 99 99? 
--features function_words_fasttext_tfidf
--min_tokens 100
--treebanks
--clusters 4
+-persons 155 107 105 586 337 363 380
+-#persons 134 380 133 684 
+-#features function_words_tfidf
+-#features function_words_fasttext_tfidf
+-#features character_bigrams
+-features character_bigrams character_trigrams
+-min_tokens 50
+-plot 2d
+-classify
