@@ -1,4 +1,3 @@
-adjustText
 contourpy
 cycler
 fonttools
