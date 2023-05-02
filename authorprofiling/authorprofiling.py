@@ -443,7 +443,10 @@ def run(args, _):
                 handles.append(mpatches.Patch(color=colors[row['person_unique']], label=row['person']))
         
         if target_dimensions == 2:
-            adjust_text(texts)
+            if args.arrows:
+                adjust_text(texts, arrowprops=dict(arrowstyle="-", color='k', lw=0.5))
+            else:
+                adjust_text(texts)
         else:
             # Drop lines
             zs_l = np.asarray([[i, -1] for i in df2.z])
