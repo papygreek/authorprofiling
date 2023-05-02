@@ -132,6 +132,16 @@ def transformers(init_model=None):
             TfidfVectorizer(),
             'function_word_lemmas',
         ),
+        (
+            'lemmas_bigrams_tfidf',
+            TfidfVectorizer(ngram_range=(2,2)),
+            'lemmas',
+        ),
+        (
+            'lemmas_trigrams_tfidf',
+            TfidfVectorizer(ngram_range=(3,3)),
+            'lemmas',
+        ),
 
         # Postags
         (
@@ -153,6 +163,16 @@ def transformers(init_model=None):
             'function_word_postags_tfidf',
             TfidfVectorizer(),
             'function_word_postags',
+        ),
+        (
+            'postags_bigrams_tfidf',
+            TfidfVectorizer(ngram_range=(2,2)),
+            'postags',
+        ),
+        (
+            'postags_trigrams_tfidf',
+            TfidfVectorizer(ngram_range=(3,3)),
+            'postags',
         ),
 
         # Variations
