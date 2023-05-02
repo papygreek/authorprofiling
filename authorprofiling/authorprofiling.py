@@ -346,6 +346,7 @@ def run(args, _):
     df = df.reset_index(drop=True)
 
     # Print stats
+    print(df)
     get_stats(args.target, df, args.stats)
     print(f'Total filtered documents: {df.shape[0]}')
     

@@ -4,7 +4,7 @@
 -#features function_words_tfidf
 -#features function_words_fasttext_tfidf
 -#features character_bigrams
--features character_trigrams_tfidf character_bigrams_tfidf
+-features postags_bigrams_tfidf postags_trigrams_tfidf lemmas_bigrams_tfidf lemmas_trigrams_tfidf
 -min_tokens 50
 -plot 2d
 -clusters 1
